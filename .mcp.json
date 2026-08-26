@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agent-native-workshop": {
+      "command": "sh",
+      "args": ["./scripts/mcp-serve.sh"]
+    }
+  }
+}

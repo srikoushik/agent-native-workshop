@@ -16,6 +16,9 @@ import { DayGrid } from "@/components/calendar/DayGrid";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+/** How often an open day re-reads its tasks. */
+const TASK_REFRESH_MS = 5000;
+
 /**
  * The day view. The day on show comes from `?date=` in the URL, so it
  * server-renders, survives a reload, is shareable, and is somewhere the agent
@@ -26,7 +29,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
  * routes invalidate the same query key, so the grid refills either way.
  */
 export default function Day({ dayKey }: { dayKey: DayKey }) {
-  const { data: tasks } = useActionQuery("list-tasks", { day: dayKey });
+  const { data: tasks } = useActionQuery(
+    "list-tasks",
+    { day: dayKey },
+    {
+      // `useDbSync` pushes UI-originated writes through instantly, but a write
+      // from another process — the CLI, or an MCP server spawned by an external
+      // coding agent — only reaches this tab on its idle poll, a full minute
+      // later. Re-reading the day on a short interval means a task shows up
+      // whoever created it. React Query pauses this while the tab is hidden.
+      refetchInterval: TASK_REFRESH_MS,
+    },
+  );
   const [creatingAt, setCreatingAt] = useState<DaySlot | null>(null);
 
   return (
