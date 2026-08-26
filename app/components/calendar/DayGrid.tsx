@@ -1,10 +1,13 @@
+import type { Task } from "@shared/api";
 import {
   buildDaySlots,
   DAY_ANCHOR_HOUR,
   slotKey,
   slotKeyAt,
+  slotKeyForTime,
   slotProgressAt,
   type DayKey,
+  type DaySlot,
 } from "@shared/day";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
@@ -18,11 +21,32 @@ const SLOT_ATTR = "data-slot-key";
  *
  * Rows sit in normal flow rather than being absolutely positioned against a
  * pixel scale. A slot is therefore an ordinary box that can hold children, so
- * tasks land inside their slot and several in the same slot simply stack.
+ * tasks land inside their slot and several in the same slot simply share it.
  */
-export function DayGrid({ dayKey }: { dayKey: DayKey }) {
+export function DayGrid({
+  dayKey,
+  tasks,
+  onSelectSlot,
+}: {
+  dayKey: DayKey;
+  tasks: Task[];
+  onSelectSlot: (slot: DaySlot) => void;
+}) {
   const slots = useMemo(() => buildDaySlots(dayKey), [dayKey]);
   const gridRef = useRef<HTMLDivElement>(null);
+
+  // Grouped by containing slot rather than exact time, so a task at 09:15
+  // shows up in the 09:00 row instead of nowhere at all.
+  const tasksBySlot = useMemo(() => {
+    const grouped = new Map<string, Task[]>();
+    for (const task of tasks) {
+      const key = slotKeyForTime(dayKey, task.time);
+      const existing = grouped.get(key);
+      if (existing) existing.push(task);
+      else grouped.set(key, [task]);
+    }
+    return grouped;
+  }, [tasks, dayKey]);
 
   // Time of day exists only in the browser: rendering it during SSR would
   // disagree with hydration, so it starts empty and fills in after mount.
@@ -52,35 +76,70 @@ export function DayGrid({ dayKey }: { dayKey: DayKey }) {
         ref={gridRef}
         className="grid grid-cols-[3rem_1fr] pt-2 pb-6 sm:grid-cols-[4.5rem_1fr]"
       >
-        {slots.map((slot) => (
-          <Fragment key={slot.key}>
-            <div className="relative">
-              {slot.startsHour && (
-                <time
-                  dateTime={slot.key}
-                  className="absolute end-2 top-0 -translate-y-1/2 font-mono text-[10px] leading-none tabular-nums text-muted-foreground sm:text-[11px]"
-                >
-                  {slot.label}
-                </time>
-              )}
-            </div>
-            <div
-              {...{ [SLOT_ATTR]: slot.key }}
-              className={cn(
-                // `scroll-mt` keeps the hour label, which straddles the rule,
-                // clear of the top edge when the grid opens on this slot.
-                "relative h-7 scroll-mt-3 border-t sm:h-8",
-                slot.startsHour
-                  ? "border-border"
-                  : "border-dashed border-border/60",
-              )}
-            >
-              {nowSlot === slot.key && now && <NowIndicator at={now} />}
-            </div>
-          </Fragment>
-        ))}
+        {slots.map((slot) => {
+          const slotTasks = tasksBySlot.get(slot.key);
+          return (
+            <Fragment key={slot.key}>
+              <div className="relative">
+                {slot.startsHour && (
+                  <time
+                    dateTime={slot.key}
+                    className="absolute end-2 top-0 -translate-y-1/2 font-mono text-[10px] leading-none tabular-nums text-muted-foreground sm:text-[11px]"
+                  >
+                    {slot.label}
+                  </time>
+                )}
+              </div>
+              <div
+                {...{ [SLOT_ATTR]: slot.key }}
+                className={cn(
+                  // `scroll-mt` keeps the hour label, which straddles the rule,
+                  // clear of the top edge when the grid opens on this slot.
+                  "relative h-7 scroll-mt-3 border-t sm:h-8",
+                  slot.startsHour
+                    ? "border-border"
+                    : "border-dashed border-border/60",
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelectSlot(slot)}
+                  aria-label={`Add a task at ${slot.label}`}
+                  className="absolute inset-0 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                />
+                {slotTasks && (
+                  // Left inert so the whole row stays one target for adding.
+                  // The next chapter makes each task its own button.
+                  <div className="pointer-events-none absolute inset-y-px start-0 end-1 flex gap-px">
+                    {slotTasks.map((task) => (
+                      <TaskChip key={task.id} task={task} />
+                    ))}
+                  </div>
+                )}
+                {nowSlot === slot.key && now && <NowIndicator at={now} />}
+              </div>
+            </Fragment>
+          );
+        })}
       </div>
     </ScrollArea>
+  );
+}
+
+/**
+ * One task inside its slot. Chips share the row width evenly, so a second task
+ * at the same time narrows the first rather than hiding behind it.
+ */
+function TaskChip({ task }: { task: Task }) {
+  return (
+    <div
+      title={`${task.time} · ${task.title}`}
+      className="flex min-w-0 flex-1 items-center rounded-sm border border-border bg-secondary px-1.5"
+    >
+      <span className="truncate text-[11px] leading-none text-secondary-foreground">
+        {task.title}
+      </span>
+    </div>
   );
 }
 

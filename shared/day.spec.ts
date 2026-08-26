@@ -6,9 +6,11 @@ import {
   formatDayTitle,
   formatDayTitleShort,
   isDayKey,
+  isTimeOfDay,
   resolveDayKey,
   shiftDayKey,
   slotKeyAt,
+  slotKeyForTime,
   slotProgressAt,
   todayKey,
 } from "./day.js";
@@ -143,6 +145,58 @@ describe("slotProgressAt", () => {
       const progress = slotProgressAt(new Date(2026, 7, 26, 9, minute));
       expect(progress).toBeGreaterThanOrEqual(0);
       expect(progress).toBeLessThan(1);
+    }
+  });
+});
+
+describe("isTimeOfDay", () => {
+  it("accepts any 24-hour HH:mm", () => {
+    for (const value of ["00:00", "09:15", "13:07", "23:59"]) {
+      expect(isTimeOfDay(value)).toBe(true);
+    }
+  });
+
+  it("rejects times that do not exist or are not HH:mm", () => {
+    for (const value of [
+      "24:00",
+      "09:60",
+      "9:15",
+      "0915",
+      "09:15:00",
+      "",
+      915,
+      null,
+    ]) {
+      expect(isTimeOfDay(value)).toBe(false);
+    }
+  });
+});
+
+describe("slotKeyForTime", () => {
+  it("puts a task on the slot boundary in that slot", () => {
+    expect(slotKeyForTime("2026-08-26", "09:00")).toBe("2026-08-26T09:00");
+    expect(slotKeyForTime("2026-08-26", "09:30")).toBe("2026-08-26T09:30");
+  });
+
+  it("rounds an off-grid time down into the slot containing it", () => {
+    // Without this an agent-created 09:15 task would exist in the database and
+    // appear in no slot on screen.
+    expect(slotKeyForTime("2026-08-26", "09:15")).toBe("2026-08-26T09:00");
+    expect(slotKeyForTime("2026-08-26", "09:29")).toBe("2026-08-26T09:00");
+    expect(slotKeyForTime("2026-08-26", "09:59")).toBe("2026-08-26T09:30");
+    expect(slotKeyForTime("2026-08-26", "00:01")).toBe("2026-08-26T00:00");
+    expect(slotKeyForTime("2026-08-26", "23:59")).toBe("2026-08-26T23:30");
+  });
+
+  it("always names a slot the grid actually renders", () => {
+    const rendered = new Set(
+      buildDaySlots("2026-08-26").map((slot) => slot.key),
+    );
+    for (let hour = 0; hour < 24; hour += 1) {
+      for (let minute = 0; minute < 60; minute += 1) {
+        const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+        expect(rendered.has(slotKeyForTime("2026-08-26", time))).toBe(true);
+      }
     }
   });
 });

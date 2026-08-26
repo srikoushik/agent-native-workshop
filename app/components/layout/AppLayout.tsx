@@ -1,10 +1,21 @@
+import { useDbSync } from "@agent-native/core/client/hooks";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { useNavigationState } from "@/hooks/use-navigation-state";
 
-/** Publishes the current screen to the agent's `navigation` application state. */
-function NavigationSync() {
+/**
+ * Publishes the current screen to the agent's `navigation` application state,
+ * and listens for the agent's writes coming back.
+ *
+ * `useDbSync` is what makes an agent-side change visible without a reload: it
+ * invalidates the `["action"]` query keys, so every `useActionQuery` refetches.
+ * Without it the UI only catches up on the slow polling fallback.
+ */
+function AgentSync() {
+  const queryClient = useQueryClient();
   useNavigationState();
+  useDbSync({ queryClient });
   return null;
 }
 
@@ -24,7 +35,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <>
-      {mounted && <NavigationSync />}
+      {mounted && <AgentSync />}
       <div className="flex h-screen flex-col overflow-hidden bg-background">
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>

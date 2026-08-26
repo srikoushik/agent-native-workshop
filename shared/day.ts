@@ -19,6 +19,7 @@ export const SLOT_MINUTES = 30;
 export const DAY_ANCHOR_HOUR = 7;
 
 const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const HOURS_PER_DAY = 24;
 
 // Spelled out rather than formatted through Intl so the server render and the
@@ -147,6 +148,27 @@ export function buildDaySlots(key: DayKey): DaySlot[] {
     }
   }
   return slots;
+}
+
+/**
+ * Rejects anything that is not a 24-hour `HH:mm`. Times come from the agent as
+ * well as the UI, so this is the only thing standing between a typo and a task
+ * that exists in the database but sits in no slot on screen.
+ */
+export function isTimeOfDay(value: unknown): value is string {
+  return typeof value === "string" && TIME_PATTERN.test(value);
+}
+
+/**
+ * The slot an `HH:mm` time belongs to, rounded down.
+ *
+ * The grid resolves to 30 minutes but a time does not have to: the agent can
+ * put a task at 09:15. Rounding down here is what guarantees every task lands
+ * in a slot that exists, so nothing is ever written but never shown.
+ */
+export function slotKeyForTime(day: DayKey, time: string): string {
+  const [hour, minute] = time.split(":").map(Number);
+  return slotKey(day, hour, Math.floor(minute / SLOT_MINUTES) * SLOT_MINUTES);
 }
 
 /**
