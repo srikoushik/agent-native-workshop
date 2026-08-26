@@ -1,5 +1,9 @@
 import "../db/index.js";
-import { ensureAdditiveColumns, getDbExec, runMigrations } from "@agent-native/core/db";
+import {
+  ensureAdditiveColumns,
+  getDbExec,
+  runMigrations,
+} from "@agent-native/core/db";
 
 import * as schema from "../db/schema.js";
 
@@ -39,6 +43,27 @@ export const runAppMigrations = runMigrations(
     org_id TEXT,
     visibility TEXT NOT NULL DEFAULT 'private'
   )`,
+    },
+    {
+      version: 2,
+      name: "create-tasks",
+      sql: `CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    day TEXT NOT NULL,
+    time TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    owner_email TEXT NOT NULL DEFAULT '',
+    org_id TEXT,
+    visibility TEXT NOT NULL DEFAULT 'private'
+  )`,
+    },
+    {
+      version: 3,
+      name: "index-tasks-owner-day",
+      // Matches how the day view reads: one owner, one date, ordered by time.
+      sql: `CREATE INDEX IF NOT EXISTS tasks_owner_day_time_idx
+    ON tasks (owner_email, day, time)`,
     },
   ],
   { table: "app_migrations" },
