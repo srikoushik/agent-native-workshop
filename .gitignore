@@ -12,6 +12,7 @@ build/
 dist
 dist-ssr
 .output/
+.deploy-tmp/
 *.local
 
 # Editor directories and files
