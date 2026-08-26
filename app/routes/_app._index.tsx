@@ -1,26 +1,28 @@
+import { DAY_PARAM, formatDayTitle, resolveDayKey } from "@shared/day";
 import { useLoaderData } from "react-router";
 
-import Home from "@/pages/Home";
+import Day from "@/pages/Day";
 
-import type { Greeting } from "@shared/api";
-
-export function meta() {
-  return [{ title: "Welcome to Agent Native" }];
-}
+import type { Route } from "./+types/_app._index";
 
 /**
- * Runs on the server during SSR, so the greeting is already in the first byte
- * of HTML — no placeholder, no client round trip.
- *
- * `loader` is a server-only export: React Router strips it (and this dynamic
- * import of the action) out of the browser bundle.
+ * Resolving the day on the server means the first byte of HTML already has the
+ * right date in it, and the client renders the same string — no flash of
+ * "today" before the requested day arrives.
  */
-export async function loader(): Promise<Greeting> {
-  const { default: hello } = await import("../../actions/hello");
-  return hello.run({});
+export async function loader({ request }: Route.LoaderArgs) {
+  const { searchParams } = new URL(request.url);
+  return { dayKey: resolveDayKey(searchParams.get(DAY_PARAM)) };
+}
+
+// Loader data is absent when the loader failed and the error boundary renders.
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [
+    { title: loaderData ? formatDayTitle(loaderData.dayKey) : "Calendar" },
+  ];
 }
 
 export default function IndexRoute() {
-  const greeting = useLoaderData<typeof loader>();
-  return <Home greeting={greeting} />;
+  const { dayKey } = useLoaderData<typeof loader>();
+  return <Day dayKey={dayKey} />;
 }
