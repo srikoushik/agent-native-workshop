@@ -1,8 +1,17 @@
 import { useAgentRouteState } from "@agent-native/core/client/navigation";
+import { DAY_PARAM, dayPath, resolveDayKey } from "@shared/day";
 
 /** Compact, semantic description of the current screen, published for the agent. */
 interface NavigationState {
-  view: "home";
+  view: "day";
+  /** `YYYY-MM-DD` the day view is showing. */
+  date: string;
+}
+
+/** The one-shot command the `navigate` action writes for the UI to consume. */
+interface NavigateCommand {
+  view?: "day";
+  date?: string;
 }
 
 /**
@@ -16,8 +25,13 @@ interface NavigationState {
  * Add a branch to both halves whenever you add a route.
  */
 export function useNavigationState() {
-  useAgentRouteState<NavigationState>({
-    getNavigationState: () => ({ view: "home" }),
-    getCommandPath: () => "/",
+  useAgentRouteState<NavigationState, NavigateCommand>({
+    getNavigationState: ({ searchParams }) => ({
+      view: "day",
+      // Resolved rather than passed through raw, so the agent is told the day
+      // actually on screen even when the URL carries no `?date=`.
+      date: resolveDayKey(searchParams.get(DAY_PARAM)),
+    }),
+    getCommandPath: (command) => dayPath(command?.date),
   });
 }
