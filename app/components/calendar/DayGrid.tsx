@@ -27,10 +27,12 @@ export function DayGrid({
   dayKey,
   tasks,
   onSelectSlot,
+  onSelectTask,
 }: {
   dayKey: DayKey;
   tasks: Task[];
   onSelectSlot: (slot: DaySlot) => void;
+  onSelectTask: (task: Task) => void;
 }) {
   const slots = useMemo(() => buildDaySlots(dayKey), [dayKey]);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -108,11 +110,16 @@ export function DayGrid({
                   className="absolute inset-0 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 />
                 {slotTasks && (
-                  // Left inert so the whole row stays one target for adding.
-                  // The next chapter makes each task its own button.
-                  <div className="pointer-events-none absolute inset-y-px start-0 end-1 flex gap-px">
+                  // Stops short of the right edge on purpose: chips are the
+                  // delete target, so without a reserved strip a full slot
+                  // would have nowhere left to tap to add another task.
+                  <div className="absolute inset-y-px start-0 end-7 flex gap-px">
                     {slotTasks.map((task) => (
-                      <TaskChip key={task.id} task={task} />
+                      <TaskChip
+                        key={task.id}
+                        task={task}
+                        onSelect={() => onSelectTask(task)}
+                      />
                     ))}
                   </div>
                 )}
@@ -130,16 +137,19 @@ export function DayGrid({
  * One task inside its slot. Chips share the row width evenly, so a second task
  * at the same time narrows the first rather than hiding behind it.
  */
-function TaskChip({ task }: { task: Task }) {
+function TaskChip({ task, onSelect }: { task: Task; onSelect: () => void }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onSelect}
       title={`${task.time} · ${task.title}`}
-      className="flex min-w-0 flex-1 items-center rounded-sm border border-border bg-secondary px-1.5"
+      aria-label={`${task.title} at ${task.time} — delete`}
+      className="flex min-w-0 flex-1 items-center rounded-sm border border-border bg-secondary px-1.5 text-start transition-colors hover:border-destructive/60 hover:bg-secondary/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <span className="truncate text-[11px] leading-none text-secondary-foreground">
         {task.title}
       </span>
-    </div>
+    </button>
   );
 }
 
