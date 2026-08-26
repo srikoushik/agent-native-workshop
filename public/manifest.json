@@ -1,7 +1,7 @@
 {
-  "name": "Calendar",
-  "short_name": "Calendar",
-  "description": "Google Calendar integration",
+  "name": "Agent Native Workshop",
+  "short_name": "Workshop",
+  "description": "Agent Native workshop skeleton.",
   "start_url": ".",
   "background_color": "#111111",
   "theme_color": "#8B5CF6",

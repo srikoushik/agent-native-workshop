@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import * as schema from "../db/schema";
 
 /**
- * Regression guard mirroring templates/analytics/server/plugins/db.spec.ts.
- * See that file (and packages/core/src/db/migrations.ts) for the full
- * rationale: a schema.ts column added without a matching migration silently
+ * Regression guard for the migration/schema contract.
+ *
+ * Rationale: a schema.ts column added without a matching migration silently
  * 500s every query touching a pre-existing production table, and two
  * branches extending the same migration list with colliding version numbers
  * can silently drop one branch's DDL.
@@ -57,7 +57,7 @@ function columnsOf(table: DrizzleTable): DrizzleColumn[] {
 // `ensureAdditiveColumns` (wired in db.ts) self-heals these at boot.
 const KNOWN_COVERAGE_DRIFT: string[] = [];
 
-describe("calendar db migrations cover every schema.ts column", () => {
+describe("db migrations cover every schema.ts column", () => {
   for (const [exportName, exported] of Object.entries(schema)) {
     if (!isDrizzleTable(exported)) continue;
     const columns = columnsOf(exported as DrizzleTable);
@@ -80,10 +80,9 @@ describe("calendar db migrations cover every schema.ts column", () => {
 
 /**
  * Guard for the name-based migration tracking convention (see the
- * `runMigrations` doc comment in packages/core/src/db/migrations.ts for the
- * full rationale — this is the fix for the analytics template's v75-v83
- * shared-DB version-collision incident where two branches independently
- * extended the same migration list under the same version numbers).
+ * `runMigrations` doc comment in @agent-native/core for the full rationale:
+ * version numbers alone are not a safe identity when two branches
+ * independently extend the same migration list).
  *
  * Extracts every `{ version: N, ... }` migration entry from the raw db.ts
  * source (matching the exact object-literal shape this file uses: `version:`
@@ -91,25 +90,19 @@ describe("calendar db migrations cover every schema.ts column", () => {
  * asserts:
  *
  *   (a) every declared `name` is unique across the whole list, and
- *   (b) every entry whose version is > 20 (the max version already present
- *       in this file before the ensureAdditiveColumns/name-policy change) has
- *       a `name`.
+ *   (b) every entry has a `name`.
  *
- * We deliberately do NOT require every legacy entry (v1-v20) to have a name —
- * naming ALL of them would make every one of those migrations re-apply by
- * name on every existing database, which is only safe if every single one of
- * those older SQL statements is idempotent. That has not been verified here,
- * so only new entries going forward (v21+) are required to be named.
+ * This app started under the name policy and has no legacy unnamed
+ * migrations, so the rule applies from v1. Never rename a shipped migration:
+ * a changed name re-applies it on every existing database.
  */
-describe("calendar db.ts migration entries follow the naming convention", () => {
+describe("db.ts migration entries follow the naming convention", () => {
   // Matches one migration entry's `version: N` followed later (before the
   // next `version:`) by an optional `name: "..."`. Entries in this file are
   // written as `{ version: N, [name: "...",] sql: ... }`, so scanning for
   // `version:` occurrences and capturing an optional immediately-following
   // `name:` is sufficient without a full parser.
   const entryRe = /version:\s*(\d+),\s*(?:name:\s*"([^"]+)",\s*)?/g;
-
-  const CURRENT_MAX_UNNAMED_VERSION = 20;
 
   function extractEntries(source: string): Array<{
     version: number;
@@ -128,7 +121,7 @@ describe("calendar db.ts migration entries follow the naming convention", () => 
   const entries = extractEntries(dbTsSource);
 
   it("finds migration entries to check (sanity guard against a regex drift)", () => {
-    expect(entries.length).toBeGreaterThan(15);
+    expect(entries.length).toBeGreaterThan(0);
   });
 
   it("every declared migration name is unique", () => {
@@ -137,9 +130,8 @@ describe("calendar db.ts migration entries follow the naming convention", () => 
     expect(duplicates).toEqual([]);
   });
 
-  it("every migration entry with version > 20 has a name", () => {
+  it("every migration entry has a name", () => {
     const missingNames = entries
-      .filter((e) => e.version > CURRENT_MAX_UNNAMED_VERSION)
       .filter((e) => !e.name)
       .map((e) => e.version);
     expect(missingNames).toEqual([]);
@@ -155,7 +147,7 @@ describe("calendar db.ts migration entries follow the naming convention", () => 
  * `runMigrations(...)` so hand-written migrations stay authoritative — not
  * just that the regex guard above passes.
  */
-describe("calendar db.ts wires ensureAdditiveColumns after runMigrations", () => {
+describe("db.ts wires ensureAdditiveColumns after runMigrations", () => {
   it("imports ensureAdditiveColumns from @agent-native/core/db", () => {
     expect(dbTsSource).toMatch(
       /import\s*\{[^}]*\bensureAdditiveColumns\b[^}]*\}\s*from\s*["']@agent-native\/core\/db["']/,
@@ -172,7 +164,7 @@ describe("calendar db.ts wires ensureAdditiveColumns after runMigrations", () =>
     // The runMigrations(...) plugin function must be awaited before
     // ensureAdditiveColumns runs, not just textually after it.
     expect(dbTsSource).toMatch(
-      /await\s+runCalendarMigrations\([^)]*\)[\s\S]*?ensureAdditiveColumns\(\{/,
+      /await\s+runAppMigrations\([^)]*\)[\s\S]*?ensureAdditiveColumns\(\{/,
     );
   });
 });

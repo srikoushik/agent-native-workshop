@@ -1,82 +1,66 @@
-# Calendar — Agent Guide
+# Agent Native Workshop — Agent Guide
 
-Calendar is an agent-native scheduling app. The agent manages events,
-availability, booking links, connected calendars, visual preferences, and sharing
-through actions and SQL-backed application state.
+This is an agent-native app skeleton. Right now it does one thing: the `hello`
+action returns a greeting and the home screen renders it. Everything else here
+is the wiring you build on.
 
 ## Skills
 
-Detailed event, availability, booking, storage, and UI rules live in
-`.agents/skills/`. Read the relevant skill before deeper work:
-
-- `event-management` for create/update/delete event flows, `list-events` result
-  formats and source coverage, and working locations.
-- `availability-booking` for free/busy, booking links, and scheduling.
-- `capture-learnings` — record a user preference or correction so it outlives
-  the thread.
+Framework rules live in `.agents/skills/`. Read the relevant skill before
+deeper work — `actions`, `storing-data`, `context-awareness`,
+`adding-a-feature`, `security`, and `portability` are the ones you will reach
+for first.
 
 ## Core Rules
 
-- Store large file/blob payloads in configured file/blob storage, not SQL: no
-  base64, `data:` URLs, images, video/audio, PDFs, ZIPs, screenshots,
-  thumbnails, or replay chunks in app tables, `application_state`, `settings`,
-  or `resources`; persist URLs, ids, or handles instead.
-- Never hardcode API keys, tokens, webhook URLs, signing secrets, private Builder/internal data, customer data, or credential-looking literals. Use secrets/OAuth/runtime configuration and obvious placeholders in examples.
-- For external integrations, inspect the workspace/provider connection catalog first; reuse its scoped resolver.
-- Use actions for events, availability, booking links, settings, navigation,
-  Google Calendar connection, and sharing. Do not bypass app access checks.
-- The `get-settings` and `update-settings` actions expose the General week-start
-  setting as `weekStart`: `sunday` or `monday`.
-- Use `connect-google-calendar` when the user asks to connect or reconnect
-  Google Calendar. Return its link to the user; do not `fetch`
-  `/_agent-native/google/auth-url` from the agent backend because that route
-  requires the signed-in browser session.
-- Satisfy a multi-event request with one batch call, never a loop of per-event
-  writes: `delete-events` handles every "remove all …" / "clear …" request,
-  including day-of-week filters, and `delete-event` is for exactly one event.
-  Preview with `dryRun` first, then report the returned `deleted` / `failed` /
-  `skipped` counts. See `event-management` and `reliable-mutations`.
+- Every user-facing operation is an action in `actions/`. The agent calls it as
+  a tool, the CLI runs it as `pnpm action <name>`, and the UI calls it through
+  `useActionQuery` / `useActionMutation`. Do not fork behaviour between the two.
 - The action schema is authoritative when a parameter is unclear.
-- Use the current date from runtime context, not a visible calendar date, when
-  the user says today/tomorrow/yesterday.
-- Use `view-screen` when the active date range, selected event, booking link, or
-  connected-calendar health is unclear.
-- Treat provider-specific actions as shortcuts, not capability limits. When the
-  exact Google Calendar, CRM, or enrichment endpoint/filter/pagination/API
-  version matters, use `provider-api-catalog`, `provider-api-docs`, and
-  `provider-api-request` against the real provider API instead of weakening the
-  answer around a narrow action.
-- For relationship-history searches, use `provider-api-request`; stage large
-  scans with `stageAs` and analyze them with `query-staged-dataset`.
-- For Google Calendar, distinguish an empty calendar from missing auth,
-  reauth-needed, or fetch failures.
-- `list-events` returns the UI-compatible list by default and the compact
-  inventory envelope to MCP callers. Preserve its account coverage,
-  `sourceCoverage`, and `coverageComplete` fields — a partial source failure is
-  not an empty calendar. See `event-management` for the formats and the
-  `accountEmails` rules.
-- Treat Google Calendar working locations and full-day out-of-office events as
-  native status events; see `event-management` for their action contracts.
-- Use framework sharing actions for calendar, event, and booking resources;
-  see `availability-booking` for booking-link controls and co-hosts.
-- Keep scheduling answers concrete: exact dates, time zones, conflicts, and
-  assumptions.
-- Event detail extensions, attendee adornments, RSVP scope, and multi-account
-  updates are documented in `event-management`; follow that skill before edits.
+- Use `server/routes/api/` only for what an action cannot model: uploads,
+  streaming/SSE, webhooks, OAuth callbacks, public SEO/OG endpoints, binary
+  assets.
+- Store application data in SQL through Drizzle. Store large file/blob payloads
+  in configured file/blob storage, not SQL: no base64, `data:` URLs, images,
+  video/audio, PDFs, ZIPs, screenshots, or thumbnails in app tables,
+  `application_state`, `settings`, or `resources` — persist URLs, ids, or
+  handles instead.
+- Never hardcode API keys, tokens, webhook URLs, signing secrets, or
+  credential-looking literals. Register credentials in `server/lib/env-config.ts`
+  and use obvious placeholders in examples.
+- Sign-in is intentionally off in local development: `.env` sets
+  `AUTH_DISABLED=1` and every request runs as `dev@local.test`. Do not add a
+  sign-in gate, route guard, or session check to work around it — remove the
+  flag instead. Never set it in a deployment environment: the build only warns,
+  it does not block, so a deployed app with it set has no authentication.
+- For external integrations, inspect the workspace/provider connection catalog
+  first and reuse its scoped resolver.
+- Use `view-screen` when the active view or selection is unclear, and
+  `navigate` when the user says "show me", "go to", or "open".
+- Use the current date from runtime context, not a rendered date, when the user
+  says today/tomorrow/yesterday.
+- Write portable SQL: this runs on SQLite locally and Postgres in production.
+- Every table added to `server/db/schema.ts` needs a matching migration in
+  `server/plugins/db.ts` with a unique `name:` slug.
 
 ## Application State
 
-- `navigation` exposes the current view, date, selected event, calendar account,
-  booking link, and settings context.
-- `navigate` moves the UI to calendar, event, availability, booking, and settings
-  views.
-- Use actions for full event details and availability calculations.
-- Preserve `accountEmail` on every Google event write. When more than one
-  Google account is connected, pass the chosen account to `create-event`, and
-  pass the event's returned `accountEmail` to `update-event`, `delete-event`,
-  and `rsvp-event`. These actions target that account's primary calendar. For a
-  move, pass the original account as `accountEmail` and the destination as
-  `targetAccountEmail` to `update-event`.
+- `navigation` exposes the current view. It is written by
+  `app/hooks/use-navigation-state.ts` and read by the `view-screen` action.
+- `navigate` is a one-shot command the UI consumes and clears.
+- Extend both halves of `use-navigation-state.ts` whenever you add a route.
+
+## UI Shape
+
+- The shell in `app/components/layout/AppLayout.tsx` is deliberately bare: no
+  nav rail, no agent chat panel, no settings screen. Do not add them back
+  without being asked — `AgentSidebar` and the settings screens are the
+  heaviest imports in the framework and land on every route from the shell.
+- Page data belongs in the route's `loader` so it server-renders; use
+  `useActionQuery` only for data that changes after load, and register its key
+  with `useDbSync`.
+- `app/root.tsx` uses `isPublicPath`, so routes really do render on the
+  server. Anything browser-only must mount after hydration, not during SSR.
 
 ## Source Changes
 

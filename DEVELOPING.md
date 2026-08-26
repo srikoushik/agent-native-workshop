@@ -1,139 +1,117 @@
-# Calendar — Development Guide
+# Agent Native Workshop — Development Guide
 
-This guide is for development-mode agents editing this app's source code. For app operations and tools, see AGENTS.md.
+For development-mode agents editing this app's source. For app operations and
+tool rules, see AGENTS.md.
 
 ## Tech Stack
 
-- **Framework**: @agent-native/core
+- **Framework**: `@agent-native/core` (Nitro server + React Router 8 SSR)
 - **Package manager**: pnpm
-- **Frontend**: React 19, React Router 8, TypeScript, Vite, TailwindCSS
-- **Backend**: Nitro (via @agent-native/core)
-- **UI components**: Radix UI + Lucide icons
-- **Google Integration**: googleapis npm package
-- **Database**: Drizzle ORM over portable SQL (`DATABASE_URL`; local dev defaults to SQLite)
-- **State**: Settings in SQL via settings API, structured data in SQL via Drizzle
-- **Path aliases**: `@/*` → app/, `@shared/*` → shared/
+- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui (Radix +
+  Tabler icons)
+- **Database**: Drizzle ORM over portable SQL (`DATABASE_URL`; local dev
+  defaults to SQLite at `file:./data/app.db`)
+- **State**: settings in SQL via the settings API, structured data in SQL via
+  Drizzle, transient UI state in `application_state`
+- **Path aliases**: `@/*` → `app/`, `@shared/*` → `shared/`
 
 ## Project Structure
 
 ```
-app/             # React SPA
+actions/         App operations (defineAction). Agent tools + CLI + UI data.
+app/             React SPA
   components/
-    layout/      # AppLayout, Sidebar
-    calendar/    # MonthView, WeekView, DayView, EventCard, EventDialog, etc.
-    booking/     # DatePicker, TimeSlotPicker, BookingForm, BookingConfirmation
-    ui/          # shadcn/ui components
-  hooks/         # Action/query hooks (use-events, use-bookings, etc.)
-  pages/         # Route pages
-server/          # Nitro API server
-  routes/        # Route-only handlers
-  lib/           # Google Calendar client, env config
-  db/            # Drizzle schema + DB connection
-shared/          # Shared TypeScript types
-actions/               # Shared app operations (defineAction; UI uses action hooks)
-data/            # Local development database fallback
+    layout/      AppLayout — bare shell (no nav rail, no agent panel)
+    ui/          shadcn/ui primitives
+  hooks/         use-navigation-state (agent ↔ UI binding), use-mobile
+  lib/           utils, api-path
+  pages/         Screen components
+  routes/        File-based routes; `_app.*` render inside AppLayout
+server/          Nitro server
+  db/            Drizzle schema + connection
+  lib/           env-config and other server modules
+  middleware/    Global auth guard
+  plugins/       Startup: agent-chat, auth, core-routes, db migrations
+  routes/        Route-only endpoints (SSR catch-all lives here)
+shared/          Types shared by server and app
+data/            Local development database
 ```
 
-## Framework Basics (Nitro + @agent-native/core)
+## Adding App Data
 
-This app uses **Nitro** (via `@agent-native/core`) for the server. All server code lives in `server/`.
+Normal app data starts as an action, not a custom route. Add
+`actions/<verb>-<resource>.ts` with `defineAction`, mark reads with
+`http: { method: "GET" }`, and call reads/writes from React with
+`useActionQuery` / `useActionMutation` from `@agent-native/core/client/hooks`.
+This keeps the UI and the agent on one contract and lets mutating actions
+refresh action-backed queries automatically.
 
-### Server Directory
+## Adding a Route-Only Endpoint
 
-```
-server/
-  routes/     # File-based route-only endpoints (auto-discovered by Nitro)
-  handlers/   # Route handler logic modules
-  plugins/    # Server plugins — run at startup (SSE, auth)
-  lib/        # Shared server modules (helpers)
-```
+Use `server/routes/api/` only for protocols an action cannot model: multipart
+uploads, streaming/SSE/WebSocket, webhooks, OAuth callbacks/redirects, public
+SEO/OG endpoints, or binary/static asset serving. Do not add `/api/*` routes
+for normal CRUD — the action endpoint already exists at
+`/_agent-native/actions/:name`.
 
-### Adding App Data
+## Database
 
-Normal app data starts as an action, not a custom route. Add `actions/<verb>-<resource>.ts` with `defineAction`, mark reads with `http: { method: "GET" }`, and call reads/writes from React with `useActionQuery` / `useActionMutation` from `@agent-native/core/client`. This keeps the UI and agent on one contract and lets mutating actions refresh action-backed queries automatically.
+`server/db/schema.ts` declares tables; `server/plugins/db.ts` owns migrations.
+Both must change together: a column added to the schema without a matching
+migration silently 500s every query touching a pre-existing production table.
+`server/plugins/db.spec.ts` is the regression guard for exactly that.
 
-### Adding a Route-Only Endpoint
+Write portable SQL only — SQLite locally, Postgres in production. Use `getDb()`
+from `server/db/index.ts` for queries.
 
-Use `server/routes/api/` only for protocols that cannot be modeled as JSON actions: multipart uploads, streaming/SSE/WebSocket, webhooks, OAuth callbacks/redirects, public SEO/OG endpoints, or binary/static asset serving. Do not add `/api/*` routes for normal CRUD, data queries, or pass-through wrappers around actions; the action endpoint already exists at `/_agent-native/actions/:name`.
+## Server Plugins
 
-Each route-only endpoint still exports a default `defineEventHandler`, but keep shared app logic in actions or server libraries so agent and UI behavior do not fork.
+Startup logic lives in `server/plugins/`. Files there run once at boot:
 
-### Server Plugins
+- `agent-chat.ts` — the agent's system prompt, initial tools, and action registry
+- `auth.ts` — sign-in configuration and public paths. Inactive while `.env`
+  sets `AUTH_DISABLED=1` (no sign-in page; every request runs as
+  `dev@local.test`). Remove that line to turn the flow back on, and never set
+  it in a deployment environment — the build warns but does not block.
+- `core-routes.ts` — SSE, declared env keys, deep-link resolution
+- `db.ts` — migrations
 
-Startup logic (SSE, auth) lives in `server/plugins/`. Use `defineNitroPlugin` from core:
+## Getting Data On Screen
 
-```ts
-import { defineNitroPlugin } from "@agent-native/core";
+Two paths, and picking the right one is most of this app's perceived speed:
 
-export default defineNitroPlugin(async (nitroApp) => {
-  // Runs once at server startup
-});
-```
+- **Page data → route `loader`.** It runs on the server during SSR, so the
+  HTML arrives complete — no spinner, no client round trip. `loader` is a
+  server-only export, so importing an action there never reaches the browser
+  bundle. `app/routes/_app._index.tsx` is the worked example.
+- **Data that changes after load → `useActionQuery` / `useActionMutation`.**
+  Then register the query key with `useDbSync` in `app/root.tsx`, otherwise
+  agent-side writes only appear after a manual reload.
 
-### Key Imports from `@agent-native/core`
+`app/root.tsx` renders with `isPublicPath`, which skips the framework's
+`ClientOnly` gate so the server streams real markup instead of a spinner that
+waits on the whole JS bundle. Anything that must not run during SSR (the agent
+navigation binding, for instance) mounts after hydration — see `AppLayout`.
 
-| Import                                       | Purpose                                           |
-| -------------------------------------------- | ------------------------------------------------- |
-| `defineNitroPlugin`                          | Define a server plugin (re-exported from Nitro)   |
-| `createSSEHandler`                           | Create SSE endpoint for real-time updates         |
-| `defineEventHandler`, `readBody`, `getQuery` | H3 route handler utilities (re-exported)          |
-| `sendToAgentChat`                            | Send messages to agent from UI (client-side)      |
-| `agentChat`                                  | Send messages to agent from scripts (server-side) |
+## Weight
 
-| Import (settings)             | Purpose                              |
-| ----------------------------- | ------------------------------------ |
-| `getSetting` / `putSetting`   | Read/write app settings in SQL       |
-| `getAppState` / `putAppState` | Read/write ephemeral UI state in SQL |
-
-## Database Schema
-
-### SQL (via Drizzle ORM)
-
-Structured data lives in SQL. Use `@agent-native/core/db/schema` helpers for schema and Drizzle's query builder for reads/writes so the same code runs across SQLite, Postgres, libSQL/Turso, D1, and other supported backends:
-
-| Table      | Contents                                       |
-| ---------- | ---------------------------------------------- |
-| `bookings` | Incoming bookings from the public booking page |
-
-### Settings (via `@agent-native/core/settings`)
-
-Configuration lives in the SQL `settings` table, accessed via the settings API:
-
-| Key                     | Contents                                                 |
-| ----------------------- | -------------------------------------------------------- |
-| `calendar-settings`     | App settings (timezone, week start, booking page config) |
-| `calendar-availability` | Availability schedule configuration                      |
-
-### OAuth Tokens (via `@agent-native/core/oauth-tokens`)
-
-Google OAuth tokens are stored in the SQL `oauth_tokens` table. Use the oauth-tokens API from `@agent-native/core/oauth-tokens` to read/write tokens — not JSON files.
-
-### Database Access
-
-Use `getDb()` from `server/db/index.ts` to get a Drizzle database instance. All queries are async. Local development defaults to `file:./data/app.db`; deployed apps need a persistent `DATABASE_URL` so data survives container/serverless restarts. Turso is optional, not required. Common choices include Neon, Supabase, Turso/libSQL, plain Postgres, durable SQLite, D1 bindings, and Builder.io-managed environments when available.
-
-## Build & Dev Commands
-
-```bash
-pnpm dev          # Start dev server (client + server)
-pnpm build        # Production build
-pnpm typecheck    # TypeScript validation
-pnpm test         # Run Vitest tests
-pnpm action <name> [--args]  # Run an action
-```
+The app shell is intentionally bare. `AgentSidebar` and the settings screens
+are the heaviest imports in the framework; adding either puts assistant-ui,
+markdown rendering, and syntax highlighting on every route. Add them where you
+need them, not in the shell.
 
 ## TypeScript Everywhere
 
-All code in this project must be TypeScript (`.ts`). Never create `.js`, `.cjs`, or `.mjs` files. Node 22+ runs `.ts` files natively, so no compilation step is needed for scripts. Use ESM imports (`import`), not CommonJS (`require`).
+All code here is TypeScript. Never create `.js`, `.cjs`, or `.mjs` files. Use
+ESM imports, not CommonJS.
 
-## Extensions (Framework Feature)
+## Commands
 
-The framework provides **Extensions** — mini sandboxed Alpine.js apps that run inside iframes. Extensions let users (or the agent) create interactive widgets, dashboards, and utilities without modifying the app's source code. They appear in the sidebar under an "Extensions" section. (Distinct from LLM tools — the function-calling primitives the agent invokes.)
-
-- **Creating extensions**: Via the sidebar "+" button, agent chat, or `POST /_agent-native/extensions`
-- **API calls**: Extensions use `extensionFetch()` (legacy alias `toolFetch`) which proxies requests through the server with `${keys.NAME}` secret injection
-- **Styling**: Extensions inherit the main app's Tailwind v4 theme automatically
-- **Sharing**: Private by default, shareable with org or specific users (same model as other ownable resources)
-- **Security**: Iframe sandbox + CSP + SSRF protection on the proxy
-
-See the `extensions` skill in `.agents/skills/extensions/SKILL.md` for full implementation details.
+```bash
+pnpm dev                     # Dev server
+pnpm build                   # Production build
+pnpm typecheck               # TypeScript validation
+pnpm test                    # Vitest
+pnpm action <name> [--args]  # Run an action from the CLI
+pnpm agent-native:doctor     # Framework health check
+```

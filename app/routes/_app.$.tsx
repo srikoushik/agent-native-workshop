@@ -1,8 +1,7 @@
-import { messagesByLocale } from "@/i18n-data";
 import NotFound from "@/pages/NotFound";
 
 export function meta() {
-  return [{ title: messagesByLocale["en-US"].routeTitles.notFound }];
+  return [{ title: "Not found" }];
 }
 
 export default function AppCatchAllRoute() {

@@ -2,10 +2,9 @@ import { Outlet } from "react-router";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 
-// Pathless layout route — wraps all protected routes with AppLayout so the
-// agent sidebar and calendar context persist across client-side navigations.
-// Public routes (book.$slug, meet.$username.$slug, booking.manage.$token)
-// intentionally live outside this layout.
+// Pathless layout route — every protected route renders inside AppLayout so
+// the left rail and the agent rail persist across client-side navigations.
+// Public routes (if you add any) live outside this layout.
 export default function AppLayoutRoute() {
   return (
     <AppLayout>

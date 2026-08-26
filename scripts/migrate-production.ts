@@ -1,10 +1,10 @@
 import { closeDbExec, withMigrationRuntime } from "@agent-native/core/db";
 import { runFrameworkReleaseMigrations } from "@agent-native/core/server";
 
-import { runCalendarMigrations } from "../server/plugins/db.js";
+import { runAppMigrations } from "../server/plugins/db.js";
 
 /**
- * Release-time schema entrypoint for Calendar.
+ * Release-time schema entrypoint.
  *
  * This script is the production owner of schema changes. It runs against the
  * direct migration endpoint selected by core, while request functions skip
@@ -13,7 +13,7 @@ import { runCalendarMigrations } from "../server/plugins/db.js";
 async function main(): Promise<void> {
   await withMigrationRuntime(async () => {
     await runFrameworkReleaseMigrations(null);
-    await runCalendarMigrations(null);
+    await runAppMigrations(null);
   });
 }
 

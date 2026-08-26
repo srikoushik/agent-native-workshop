@@ -1,25 +1,26 @@
-import CalendarView from "@/pages/CalendarView";
+import { useLoaderData } from "react-router";
 
-const SEO_TITLE =
-  "Calendar - Open Source AI scheduling and Google Calendar automation";
-const SEO_DESCRIPTION =
-  "Open Source AI calendar app for Google Calendar scheduling, booking links, meeting coordination, and agent-managed event updates.";
+import Home from "@/pages/Home";
+
+import type { Greeting } from "@shared/api";
 
 export function meta() {
-  return [
-    { title: SEO_TITLE },
-    {
-      name: "description",
-      content: SEO_DESCRIPTION,
-    },
-    { property: "og:title", content: SEO_TITLE },
-    { property: "og:description", content: SEO_DESCRIPTION },
-    { name: "twitter:card", content: "summary" },
-    { name: "twitter:title", content: SEO_TITLE },
-    { name: "twitter:description", content: SEO_DESCRIPTION },
-  ];
+  return [{ title: "Welcome to Agent Native" }];
+}
+
+/**
+ * Runs on the server during SSR, so the greeting is already in the first byte
+ * of HTML — no placeholder, no client round trip.
+ *
+ * `loader` is a server-only export: React Router strips it (and this dynamic
+ * import of the action) out of the browser bundle.
+ */
+export async function loader(): Promise<Greeting> {
+  const { default: hello } = await import("../../actions/hello");
+  return hello.run({});
 }
 
 export default function IndexRoute() {
-  return <CalendarView />;
+  const greeting = useLoaderData<typeof loader>();
+  return <Home greeting={greeting} />;
 }
