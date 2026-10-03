@@ -1,4 +1,5 @@
 import { useActionQuery } from "@agent-native/core/client/hooks";
+import type { Task } from "@shared/api";
 import {
   dayPath,
   formatDayTitle,
@@ -13,6 +14,7 @@ import { Link } from "react-router";
 
 import { CreateTaskDialog } from "@/components/calendar/CreateTaskDialog";
 import { DayGrid } from "@/components/calendar/DayGrid";
+import { DeleteTaskDialog } from "@/components/calendar/DeleteTaskDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -42,6 +44,7 @@ export default function Day({ dayKey }: { dayKey: DayKey }) {
     },
   );
   const [creatingAt, setCreatingAt] = useState<DaySlot | null>(null);
+  const [deleting, setDeleting] = useState<Task | null>(null);
 
   return (
     <div className="mx-auto flex h-full w-full max-w-5xl flex-col p-3 sm:p-6">
@@ -85,6 +88,7 @@ export default function Day({ dayKey }: { dayKey: DayKey }) {
             dayKey={dayKey}
             tasks={tasks ?? []}
             onSelectSlot={setCreatingAt}
+            onSelectTask={setDeleting}
           />
         </CardContent>
       </Card>
@@ -93,6 +97,12 @@ export default function Day({ dayKey }: { dayKey: DayKey }) {
         dayKey={dayKey}
         slot={creatingAt}
         onClose={() => setCreatingAt(null)}
+      />
+
+      <DeleteTaskDialog
+        dayKey={dayKey}
+        task={deleting}
+        onClose={() => setDeleting(null)}
       />
     </div>
   );
